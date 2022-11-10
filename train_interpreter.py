@@ -14,7 +14,7 @@ from src.datasets import ImageLabelDataset, FeatureDataset, make_transform
 from src.feature_extractors import create_feature_extractor, collect_features
 
 from guided_diffusion.guided_diffusion.script_util import model_and_diffusion_defaults, add_dict_to_argparser
-from guided_diffusion.guided_diffusion.dist_util import dev
+from guided_diffusion.guided_diffusion.dist_util import dev, setup_dist
 
 
 def prepare_data(args):
@@ -30,9 +30,11 @@ def prepare_data(args):
             args['image_size']
         )
     )
+    # print('dim', *args['dim'])
     X = torch.zeros((len(dataset), *args['dim'][::-1]), dtype=torch.float)
     y = torch.zeros((len(dataset), *args['dim'][:-1]), dtype=torch.uint8)
-
+    # print(X.shape)
+    # print(y.shape)
     if 'share_noise' in args and args['share_noise']:
         rnd_gen = torch.Generator(device=dev()).manual_seed(args['seed'])
         noise = torch.randn(1, 3, args['image_size'], args['image_size'], 
@@ -46,16 +48,23 @@ def prepare_data(args):
         X[row] = collect_features(args, features).cpu()
         
         for target in range(args['number_class']):
-            if target == args['ignore_label']: continue
+            if target == args['ignore_label']:
+                continue
             if 0 < (label == target).sum() < 20:
                 print(f'Delete small annotation from image {dataset.image_paths[row]} | label {target}')
                 label[label == target] = args['ignore_label']
+        # print('shape')
+        # print(label.shape)
+        # print(y.shape)
         y[row] = label
     
     d = X.shape[1]
+    # print('d', d)
     print(f'Total dimension {d}')
     X = X.permute(1,0,2,3).reshape(d, -1).permute(1, 0)
+    # print('x', X.shape)
     y = y.flatten()
+    # print('y', y.shape)
     return X[y != args['ignore_label']], y[y != args['ignore_label']]
 
 
@@ -108,14 +117,15 @@ def train(args):
 
     train_loader = DataLoader(dataset=train_data, batch_size=args['batch_size'], shuffle=True, drop_last=True)
 
-    print(" *********************** Current dataloader length " +  str(len(train_loader)) + " ***********************")
+    print(" *********************** Current dataloader length " + str(len(train_loader)) + " ***********************")
     for MODEL_NUMBER in range(args['start_model_num'], args['model_num'], 1):
 
         gc.collect()
         classifier = pixel_classifier(numpy_class=(args['number_class']), dim=args['dim'][-1])
         classifier.init_weights()
 
-        classifier = nn.DataParallel(classifier).cuda()
+        # classifier = nn.DataParallel(classifier).cuda()
+        classifier = nn.DataParallel(classifier)
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(classifier.parameters(), lr=0.001)
         classifier.train()
@@ -126,6 +136,8 @@ def train(args):
         stop_sign = 0
         for epoch in range(100):
             for X_batch, y_batch in train_loader:
+                # print(type(X_batch))
+                # print(X_batch.shape)
                 X_batch, y_batch = X_batch.to(dev()), y_batch.to(dev())
                 y_batch = y_batch.type(torch.long)
 
@@ -173,6 +185,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     setup_seed(args.seed)
+
+    setup_dist()
 
     # Load the experiment config
     opts = json.load(open(args.exp, 'r'))

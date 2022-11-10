@@ -63,6 +63,7 @@ class FeatureExtractor(nn.Module):
         self._load_pretrained_model(model_path, **kwargs)
         print(f"Pretrained model is successfully loaded from {model_path}")
         self.save_hook = save_input_hook if input_activations else save_out_hook
+        # print('hk', self.save_hook)
         self.feature_blocks = []
 
     def _load_pretrained_model(self, model_path: str, **kwargs):
@@ -70,7 +71,7 @@ class FeatureExtractor(nn.Module):
 
 
 class FeatureExtractorDDPM(FeatureExtractor):
-    ''' 
+    '''
     Wrapper to extract features from pretrained DDPMs.
             
     :param steps: list of diffusion steps t.
@@ -80,7 +81,11 @@ class FeatureExtractorDDPM(FeatureExtractor):
     def __init__(self, steps: List[int], blocks: List[int], **kwargs):
         super().__init__(**kwargs)
         self.steps = steps
-        
+
+        # print('out', self.model.output_blocks)
+        # print('mid', self.model.middle_block)
+        # print('inp', self.model.input_blocks)
+        # print(blocks)
         # Save decoder activations
         for idx, block in enumerate(self.model.output_blocks):
             if idx in blocks:
@@ -95,6 +100,7 @@ class FeatureExtractorDDPM(FeatureExtractor):
         # Needed to pass only expected args to the function
         argnames = inspect.getfullargspec(create_model_and_diffusion)[0]
         expected_args = {name: kwargs[name] for name in argnames}
+        print(expected_args)
         self.model, self.diffusion = create_model_and_diffusion(**expected_args)
         
         self.model.load_state_dict(
@@ -108,6 +114,7 @@ class FeatureExtractorDDPM(FeatureExtractor):
     @torch.no_grad()
     def forward(self, x, noise=None):
         activations = []
+        # print(self.steps)
         for t in self.steps:
             # Compute x_t and run DDPM
             t = torch.tensor([t]).to(x.device)
@@ -116,9 +123,12 @@ class FeatureExtractorDDPM(FeatureExtractor):
 
             # Extract activations
             for block in self.feature_blocks:
+                # print('act')
+                # print(block.activations)
                 activations.append(block.activations)
+                # print('1activation', block.activations.shape)
                 block.activations = None
-
+        # print('2activations', len(activations))
         # Per-layer list of activations [N, C, H, W]
         return activations
 
@@ -237,7 +247,9 @@ def collect_features(args, activations: List[torch.Tensor], sample_idx=0):
     size = tuple(args['dim'][:-1])
     resized_activations = []
     for feats in activations:
+        # print('feats_before:', feats.shape)
         feats = feats[sample_idx][None]
+        # print('feats_after :', feats.shape)
         feats = nn.functional.interpolate(
             feats, size=size, mode=args["upsample_mode"]
         )

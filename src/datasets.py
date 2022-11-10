@@ -71,6 +71,7 @@ class ImageLabelDataset(Dataset):
         self.transform = transform
         self.image_paths = _list_image_files_recursively(data_dir)
         self.image_paths = sorted(self.image_paths)
+        # print(self.image_paths)
 
         if num_images > 0:
             print(f"Take first {num_images} images...")
@@ -91,14 +92,23 @@ class ImageLabelDataset(Dataset):
         pil_image = pil_image.convert("RGB")
         assert pil_image.size[0] == pil_image.size[1], \
                f"Only square images are supported: ({pil_image.size[0]}, {pil_image.size[1]})"
+        # print(type(pil_image))
+        # cv2.imshow("", np.array(pil_image)[:, :, ::-1].copy())
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
         tensor_image = self.transform(pil_image)
+        # cv2.imshow("", tensor_image.numpy().transpose(1, 2, 0))
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
         # Load a corresponding mask and resize it to (self.resolution, self.resolution)
         label_path = self.label_paths[idx]
         label = np.load(label_path).astype('uint8')
         label = cv2.resize(
             label, (self.resolution, self.resolution), interpolation=cv2.INTER_NEAREST
         )
+        # np.set_printoptions(threshold=np.inf)
+        # print(label)
         tensor_label = torch.from_numpy(label)
         return tensor_image, tensor_label
 
