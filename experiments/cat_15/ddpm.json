@@ -19,8 +19,8 @@
   "batch_size": 64,
   "max_training": 30,
   
-  "training_number": 30,
-  "testing_number": 20,
+  "training_number": 2,
+  "testing_number": 1,
 
   "upsample_mode":"bilinear",
   "share_noise": true,

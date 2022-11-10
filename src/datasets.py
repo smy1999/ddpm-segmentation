@@ -20,7 +20,7 @@ def make_transform(model_type: str, resolution: int):
             transforms.Resize(resolution),
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], 
+                mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]
             )
         ])
@@ -36,19 +36,41 @@ class FeatureDataset(Dataset):
     :param X_data: pixel representations [num_pixels, feature_dim]
     :param y_data: pixel labels [num_pixels]
     '''
+
     def __init__(
-        self, 
-        X_data: torch.Tensor, 
-        y_data: torch.Tensor
-    ):    
-        self.X_data = X_data
-        self.y_data = y_data
+            self,
+            file_len,
+            dim
+    ):
+
+        self.file_len = file_len
+        self.len = 0
+        for l in self.file_len:
+            self.len += l
+        self.dim = dim
 
     def __getitem__(self, index):
-        return self.X_data[index], self.y_data[index]
+        count = 0
+        offset = index
+        for l in self.file_len:
+            if offset >= l:
+                count += 1
+                offset -= l
+            else:
+                break
+        x_mem = np.memmap('processing/features_' + str(count) + '.npy', dtype='float32', mode='r',
+                          shape=(self.file_len[count], self.dim))
+        y_mem = np.memmap('processing/labels_' + str(count) + '.npy', dtype='uint8', mode='r', shape=self.dim)
+        x = torch.from_numpy(x_mem)
+        y = torch.from_numpy(y_mem)
+        print('xshape', x.shape)
+        print('yshape', y.shape)
+        print('offset', offset)
+
+        return x[offset, ], y[offset]
 
     def __len__(self):
-        return len(self.X_data)
+        return self.len
 
 
 class ImageLabelDataset(Dataset):
@@ -59,12 +81,13 @@ class ImageLabelDataset(Dataset):
     :param num_images: restrict a number of images in the dataset.
     :param transform: image transforms.
     '''
+
     def __init__(
-        self,
-        data_dir: str,
-        resolution: int,
-        num_images= -1,
-        transform=None,
+            self,
+            data_dir: str,
+            resolution: int,
+            num_images=-1,
+            transform=None,
     ):
         super().__init__()
         self.resolution = resolution
@@ -90,7 +113,7 @@ class ImageLabelDataset(Dataset):
         pil_image = Image.open(image_path)
         pil_image = pil_image.convert("RGB")
         assert pil_image.size[0] == pil_image.size[1], \
-               f"Only square images are supported: ({pil_image.size[0]}, {pil_image.size[1]})"
+            f"Only square images are supported: ({pil_image.size[0]}, {pil_image.size[1]})"
 
         tensor_image = self.transform(pil_image)
         # Load a corresponding mask and resize it to (self.resolution, self.resolution)
@@ -118,13 +141,13 @@ class InMemoryImageLabelDataset(Dataset):
 
     def __init__(
             self,
-            images: np.ndarray, 
+            images: np.ndarray,
             labels: np.ndarray,
             resolution=256,
             transform=None
     ):
         super().__init__()
-        assert  len(images) == len(labels)
+        assert len(images) == len(labels)
         self.images = images
         self.labels = labels
         self.resolution = resolution
@@ -136,7 +159,7 @@ class InMemoryImageLabelDataset(Dataset):
     def __getitem__(self, idx):
         image = Image.fromarray(self.images[idx])
         assert image.size[0] == image.size[1], \
-               f"Only square images are supported: ({image.size[0]}, {image.size[1]})"
+            f"Only square images are supported: ({image.size[0]}, {image.size[1]})"
 
         tensor_image = self.transform(image)
         label = self.labels[idx]
@@ -145,7 +168,3 @@ class InMemoryImageLabelDataset(Dataset):
         )
         tensor_label = torch.from_numpy(label)
         return tensor_image, tensor_label
-
-
-
-
