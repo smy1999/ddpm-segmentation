@@ -70,7 +70,6 @@ class FeatureDataset2(Dataset):
         for l in self.file_len:
             self.len += l
         self.dim = dim
-        for i in range(15):
 
 
     def __getitem__(self, index):
