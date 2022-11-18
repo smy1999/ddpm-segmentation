@@ -5,6 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from guided_diffusion.guided_diffusion.image_datasets import _list_image_files_recursively
+import logging
 
 
 def make_transform(model_type: str, resolution: int):
@@ -71,8 +72,73 @@ class FeatureDataset2(Dataset):
             self.len += l
         self.dim = dim
 
+    def __getitem__(self, index):
+        count = 0
+        offset = index
+        for l in self.file_len:
+            if offset >= l:
+                count += 1
+                offset -= l
+            else:
+                break
+        x_mem = np.memmap('processing/features_' + str(count) + '.npy', dtype='float32', mode='r',
+                          shape=(self.file_len[count], self.dim))
+        y_mem = np.memmap('processing/labels_' + str(count) + '.npy', dtype='uint8', mode='r', shape=self.file_len[count])
+        x = torch.from_numpy(x_mem)
+        y = torch.from_numpy(y_mem)
+
+        return x[offset, ], y[offset]
+
+    def __len__(self):
+        return self.len
+
+
+class FeatureDataset3(Dataset):
+    '''
+    读取一半数据在内存z
+    '''
+
+    def __init__(
+            self,
+            file_len,
+            dim,
+            memory_len
+    ):
+        logging.info('Feature dataset creating data...')
+        # print('Feature dataset creating data...')
+        self.file_len = file_len
+        self.len = 0
+        for l in self.file_len:
+            self.len += l
+        self.dim = dim
+        half_len = [self.file_len[i] for i in range(memory_len)]
+
+        for i in range(1, memory_len):
+            half_len[i] += half_len[i - 1]
+        self.max_len = half_len[memory_len - 1]
+        half_len.insert(0, 0)
+        # print(half_len)
+
+        self.x = torch.zeros((half_len[memory_len], self.dim), dtype=torch.float)
+        self.y = torch.zeros(half_len[memory_len], dtype=torch.uint8)
+        for i in range(memory_len):
+            logging.info('Loading features and labels ' + str(i) + ' to memory')
+            # print('Loading features and labels', i, 'to memory')
+            x_mem = np.memmap('processing/features_' + str(i) + '.npy', dtype='float32', mode='r',
+                              shape=(self.file_len[i], self.dim))
+            y_mem = np.memmap('processing/labels_' + str(i) + '.npy', dtype='uint8', mode='r',
+                              shape=self.file_len[i])
+            x = torch.from_numpy(x_mem)
+            y = torch.from_numpy(y_mem)
+            self.x[half_len[i]: half_len[i + 1], ] = x
+            self.y[half_len[i]: half_len[i + 1]] = y
 
     def __getitem__(self, index):
+        # print('data', index, end="")
+        if index < self.max_len:
+            # print(' in memory')
+            return self.x[index, ], self.y[index]
+        # print(' in disk')
         count = 0
         offset = index
         for l in self.file_len:
@@ -165,7 +231,7 @@ class InMemoryImageLabelDataset(Dataset):
             transform=None
     ):
         super().__init__()
-        assert  len(images) == len(labels)
+        assert len(images) == len(labels)
         self.images = images
         self.labels = labels
         self.resolution = resolution

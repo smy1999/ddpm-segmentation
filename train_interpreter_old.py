@@ -31,7 +31,6 @@ def prepare_data(args):
             args['image_size']
         )
     )
-    # print('ok1')
     X = torch.zeros((len(dataset), *args['dim'][::-1]), dtype=torch.float)
     y = torch.zeros((len(dataset), *args['dim'][:-1]), dtype=torch.uint8)
     # print('ok2')

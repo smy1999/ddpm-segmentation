@@ -40,8 +40,10 @@ def multi_acc(y_pred, y_test):
 
 def oht_to_scalar(y_pred):
     y_pred_softmax = torch.log_softmax(y_pred, dim=1)
+    # print('y_pred_softmax', y_pred_softmax)
     _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
-
+    # print('y_pred_tags', y_pred_tags)
+    # print(y_pred_tags.shape)
     return y_pred_tags
     
 

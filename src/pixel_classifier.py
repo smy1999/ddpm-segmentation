@@ -8,6 +8,7 @@ from torch.distributions import Categorical
 from src.utils import colorize_mask, oht_to_scalar
 from src.data_util import get_palette, get_class_names
 from PIL import Image
+from collections import OrderedDict
 
 
 # Adopted from https://github.com/nv-tlabs/datasetGAN_release/blob/d9564d4d2f338eaad78132192b865b6cc1e26cac/datasetGAN/train_interpreter.py#L68
@@ -80,6 +81,8 @@ def predict_labels(models, features, size):
     with torch.no_grad():
         for MODEL_NUMBER in range(len(models)):
             preds = models[MODEL_NUMBER](features.cuda())
+            # print('preds', preds.shape)
+            # print(preds)
             entropy = Categorical(logits=preds).entropy()
             all_entropy.append(entropy)
             all_seg.append(preds)
@@ -101,9 +104,13 @@ def predict_labels(models, features, size):
 
         js = full_entropy - torch.mean(torch.stack(all_entropy), 0)
         top_k = js.sort()[0][- int(js.shape[0] / 10):].mean()
-
+        # print('sme', len(seg_mode_ensemble))
         img_seg_final = torch.stack(seg_mode_ensemble, dim=-1)
+        # print('img_seg_final', img_seg_final)
+        # print('img_seg_final', img_seg_final.shape)
         img_seg_final = torch.mode(img_seg_final, 2)[0]
+        # print('img_seg_final', img_seg_final)
+        # print('img_seg_final', img_seg_final.shape)
     return img_seg_final, top_k
 
 
@@ -114,7 +121,7 @@ def save_predictions(args, image_paths, preds):
 
     for i, pred in enumerate(preds):
         filename = image_paths[i].split('/')[-1].split('.')[0]
-        np.save(os.path.join(args['exp_dir'], 'predictions', filename + '.npy'), pred[0])
+        np.save(os.path.join(args['exp_dir'], 'predictions', filename + '.npy'), pred)
 
         pred = np.squeeze(pred)
         mask = colorize_mask(pred, palette)
@@ -156,6 +163,10 @@ def load_ensemble(args, device='cpu'):
     for i in range(args['model_num']):
         model_path = os.path.join(args['exp_dir'], f'model_{i}.pth')
         state_dict = torch.load(model_path)['model_state_dict']
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            new_state_dict['module.' + k] = v
+        state_dict = new_state_dict
         model = nn.DataParallel(pixel_classifier(args["number_class"], args['dim'][-1]))
         model.load_state_dict(state_dict)
         model = model.module.to(device)
